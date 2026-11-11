@@ -1,0 +1,65 @@
+# Собирает официальный whisper.cpp с поддержкой Vulkan (видеокарты AMD/Intel/NVIDIA) под Windows.
+# Запуск: вкладка Actions -> "Build whisper.cpp Vulkan" -> Run workflow.
+# Результат: Release с файлом whisper-vulkan-win-x64.zip.
+name: Build whisper.cpp Vulkan
+
+on:
+  workflow_dispatch:
+    inputs:
+      whisper_ref:
+        description: "Версия whisper.cpp (тег из github.com/ggml-org/whisper.cpp)"
+        default: "v1.9.5"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  VULKAN_VERSION: 1.4.357.0   # как в официальной сборке llama.cpp
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout official whisper.cpp
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          ref: ${{ inputs.whisper_ref }}
+          path: whisper.cpp
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
+
+      - name: Build
+        shell: pwsh
+        working-directory: whisper.cpp
+        run: |
+          cmake -B build -DGGML_VULKAN=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DBUILD_SHARED_LIBS=ON
+          cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "whisper-vulkan-win-x64"
+          New-Item -ItemType Directory $out | Out-Null
+          Copy-Item whisper.cpp/build/bin/Release/* $out -Recurse
+          Copy-Item whisper.cpp/LICENSE $out
+          $commit = git -C whisper.cpp rev-parse HEAD
+          "whisper.cpp ${{ inputs.whisper_ref }} ($commit), Vulkan SDK $env:VULKAN_VERSION" | Out-File "$out/BUILD_INFO.txt"
+          Compress-Archive -Path "$out/*" -DestinationPath "$out.zip"
+          Get-FileHash "$out.zip" -Algorithm SHA256 | Format-List
+          Get-ChildItem $out
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: whisper-${{ inputs.whisper_ref }}-vulkan-${{ github.run_number }}
+          name: whisper.cpp ${{ inputs.whisper_ref }} Vulkan (Windows x64)
+          body: "Собрано из официального github.com/ggml-org/whisper.cpp ${{ inputs.whisper_ref }}. Журнал сборки: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          files: whisper-vulkan-win-x64.zip
