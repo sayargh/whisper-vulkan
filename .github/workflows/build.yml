@@ -40,7 +40,7 @@ jobs:
         shell: pwsh
         working-directory: whisper.cpp
         run: |
-          cmake -B build -DGGML_VULKAN=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DBUILD_SHARED_LIBS=ON
+                    cmake -B build -DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DBUILD_SHARED_LIBS=ON
           cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
 
       - name: Package
